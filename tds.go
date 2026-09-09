@@ -985,6 +985,14 @@ func sendSqlBatch72(buf *tdsBuffer, sqltext string, headers []headerStruct, rese
 	return buf.FinishPacket()
 }
 
+func sendSqlBatch71(buf *tdsBuffer, sqltext string, resetSession bool) (err error) {
+	buf.BeginPacket(packSQLBatch, resetSession)
+	if _, err = buf.Write(str2ucs2(sqltext)); err != nil {
+		return err
+	}
+	return buf.FinishPacket()
+}
+
 // 2.2.1.7 Attention: https://msdn.microsoft.com/en-us/library/dd341449.aspx
 // 4.19.2 Out-of-Band Attention Signal: https://msdn.microsoft.com/en-us/library/dd305167.aspx
 func sendAttention(buf *tdsBuffer) error {

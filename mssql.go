@@ -346,6 +346,9 @@ func (c *Conn) Commit() error {
 }
 
 func (c *Conn) sendCommitRequest() error {
+	if c.sess.legacyTDS71 {
+		return sendSqlBatch71(c.sess.buf, "COMMIT TRANSACTION", false)
+	}
 	headers := []headerStruct{
 		{hdrtype: dataStmHdrTransDescr,
 			data: transDescrHdr{c.sess.tranid, 1}.pack()},
@@ -376,6 +379,9 @@ func (c *Conn) Rollback() error {
 }
 
 func (c *Conn) sendRollbackRequest() error {
+	if c.sess.legacyTDS71 {
+		return sendSqlBatch71(c.sess.buf, "ROLLBACK TRANSACTION", false)
+	}
 	headers := []headerStruct{
 		{hdrtype: dataStmHdrTransDescr,
 			data: transDescrHdr{c.sess.tranid, 1}.pack()},
@@ -411,6 +417,9 @@ func (c *Conn) begin(ctx context.Context, tdsIsolation isoLevel) (tx driver.Tx, 
 
 func (c *Conn) sendBeginRequest(ctx context.Context, tdsIsolation isoLevel) error {
 	c.transactionCtx = ctx
+	if c.sess.legacyTDS71 {
+		return sendSqlBatch71(c.sess.buf, "BEGIN TRANSACTION", false)
+	}
 	headers := []headerStruct{
 		{hdrtype: dataStmHdrTransDescr,
 			data: transDescrHdr{0, 1}.pack()},
@@ -443,7 +452,6 @@ func (d *Driver) open(ctx context.Context, dsn string) (*Conn, error) {
 	c := newConnector(params, nil)
 	return d.connect(ctx, c, params)
 }
-
 
 func failoverPartnerParams(params msdsn.Config) *msdsn.Config {
 	if params.FailOverPartner == "" {
@@ -584,7 +592,12 @@ func (s *Stmt) sendQuery(ctx context.Context, args []namedValue) (err error) {
 	conn.resetSession = false
 	isProc := isProc(s.query)
 	if len(args) == 0 && !isProc {
-		if err = sendSqlBatch72(conn.sess.buf, s.query, headers, reset); err != nil {
+		if conn.sess.legacyTDS71 {
+			err = sendSqlBatch71(conn.sess.buf, s.query, reset)
+		} else {
+			err = sendSqlBatch72(conn.sess.buf, s.query, headers, reset)
+		}
+		if err != nil {
 			conn.sess.LogF(ctx, msdsn.LogErrors, "Failed to send SqlBatch with %v", err)
 			conn.connectionGood = false
 			return fmt.Errorf("failed to send SQL Batch: %v", err)
@@ -607,7 +620,12 @@ func (s *Stmt) sendQuery(ctx context.Context, args []namedValue) (err error) {
 			params[0] = makeStrParam(s.query)
 			params[1] = makeStrParam(strings.Join(decls, ","))
 		}
-		if err = sendRpc(conn.sess.buf, headers, proc, 0, params, reset, conn.sess.encoding); err != nil {
+		if conn.sess.legacyTDS71 {
+			err = sendRpc71(conn.sess.buf, proc, 0, params, reset, conn.sess.encoding)
+		} else {
+			err = sendRpc(conn.sess.buf, headers, proc, 0, params, reset, conn.sess.encoding)
+		}
+		if err != nil {
 			conn.sess.LogF(ctx, msdsn.LogErrors, "Failed to send Rpc with %v", err)
 			conn.connectionGood = false
 			return fmt.Errorf("failed to send RPC: %v", err)

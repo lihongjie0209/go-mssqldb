@@ -48,8 +48,18 @@ var (
 
 // http://msdn.microsoft.com/en-us/library/dd357576.aspx
 func sendRpc(buf *tdsBuffer, headers []headerStruct, proc procId, flags uint16, params []param, resetSession bool, encoding msdsn.EncodeParameters) (err error) {
+	return sendRPCRequest(buf, headers, proc, flags, params, resetSession, encoding, true)
+}
+
+func sendRpc71(buf *tdsBuffer, proc procId, flags uint16, params []param, resetSession bool, encoding msdsn.EncodeParameters) (err error) {
+	return sendRPCRequest(buf, nil, proc, flags, params, resetSession, encoding, false)
+}
+
+func sendRPCRequest(buf *tdsBuffer, headers []headerStruct, proc procId, flags uint16, params []param, resetSession bool, encoding msdsn.EncodeParameters, includeHeaders bool) (err error) {
 	buf.BeginPacket(packRPCRequest, resetSession)
-	writeAllHeaders(buf, headers)
+	if includeHeaders {
+		writeAllHeaders(buf, headers)
+	}
 	if len(proc.name) == 0 {
 		var idswitch uint16 = 0xffff
 		err = binary.Write(buf, binary.LittleEndian, &idswitch)
