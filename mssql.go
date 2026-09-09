@@ -309,6 +309,11 @@ func (c *Conn) clearOuts() {
 // checkServerAbortedTransaction returns an error when the server ended
 // the transaction without the driver's knowledge (e.g. XACT_ABORT).
 func (c *Conn) checkServerAbortedTransaction() error {
+	// TDS 7.1 does not report the transaction descriptor ENVCHANGE used by
+	// newer servers. SQL Server 2000 transactions are managed by SQL batches.
+	if c.sess.legacyTDS71 {
+		return nil
+	}
 	if c.inTransaction && c.sess.tranid == 0 {
 		return Error{
 			Number:  0,
