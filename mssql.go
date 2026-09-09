@@ -352,7 +352,9 @@ func (c *Conn) Commit() error {
 
 func (c *Conn) sendCommitRequest() error {
 	if c.sess.legacyTDS71 {
-		return sendSqlBatch71(c.sess.buf, "COMMIT TRANSACTION", false)
+		reset := c.resetSession
+		c.resetSession = false
+		return sendSqlBatch71(c.sess.buf, "COMMIT TRANSACTION", reset)
 	}
 	headers := []headerStruct{
 		{hdrtype: dataStmHdrTransDescr,
@@ -385,7 +387,9 @@ func (c *Conn) Rollback() error {
 
 func (c *Conn) sendRollbackRequest() error {
 	if c.sess.legacyTDS71 {
-		return sendSqlBatch71(c.sess.buf, "ROLLBACK TRANSACTION", false)
+		reset := c.resetSession
+		c.resetSession = false
+		return sendSqlBatch71(c.sess.buf, "ROLLBACK TRANSACTION", reset)
 	}
 	headers := []headerStruct{
 		{hdrtype: dataStmHdrTransDescr,
@@ -423,7 +427,9 @@ func (c *Conn) begin(ctx context.Context, tdsIsolation isoLevel) (tx driver.Tx, 
 func (c *Conn) sendBeginRequest(ctx context.Context, tdsIsolation isoLevel) error {
 	c.transactionCtx = ctx
 	if c.sess.legacyTDS71 {
-		return sendSqlBatch71(c.sess.buf, "BEGIN TRANSACTION", false)
+		reset := c.resetSession
+		c.resetSession = false
+		return sendSqlBatch71(c.sess.buf, "BEGIN TRANSACTION", reset)
 	}
 	headers := []headerStruct{
 		{hdrtype: dataStmHdrTransDescr,
