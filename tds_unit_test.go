@@ -603,6 +603,11 @@ func TestReadPreloginOptionData(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:     "sql server 2000 empty thread id at end",
+			option:   &preloginOption{token: preloginTHREADID, offset: uint16(len(buffer)), length: 0},
+			expected: []byte{},
+		},
+		{
 			name:    "length past end of buffer",
 			option:  &preloginOption{token: preloginVERSION, offset: 6, length: 5},
 			wantErr: true,

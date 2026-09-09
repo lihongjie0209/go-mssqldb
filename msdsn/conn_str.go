@@ -115,6 +115,9 @@ type Config struct {
 	Password   string
 	Encryption Encryption
 	TLSConfig  *tls.Config
+	// LegacyTDS71 enables the TDS 7.1 wire format required by SQL Server 2000.
+	// It must only be used with encryption disabled.
+	LegacyTDS71 bool
 
 	FailOverPartner    string
 	FailOverPort       uint64

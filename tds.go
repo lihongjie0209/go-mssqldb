@@ -201,6 +201,7 @@ type tdsSession struct {
 	connid          UniqueIdentifier
 	activityid      UniqueIdentifier
 	encoding        msdsn.EncodeParameters
+	legacyTDS71     bool
 	// readDone is closed when the current processSingleResponse goroutine
 	// completes. startResponseReader waits on this to prevent concurrent buffer reads.
 	readDone chan struct{}
@@ -384,7 +385,8 @@ func readPreloginOptionData(plOption *preloginOption, buffer []byte) ([]byte, er
 	optionLength := int(plOption.length)
 
 	// check if prelogin option data exists in buffer
-	if optionOffset+optionLength > buffer_length || optionOffset >= buffer_length {
+	validEmptyLegacyThreadID := plOption.token == preloginTHREADID && optionLength == 0 && optionOffset == buffer_length
+	if optionOffset+optionLength > buffer_length || (optionOffset >= buffer_length && !validEmptyLegacyThreadID) {
 		return nil, fmt.Errorf("invalid buffer, invalid prelogin option")
 	}
 
@@ -1065,6 +1067,8 @@ func prepareLogin(ctx context.Context, c *Connector, p msdsn.Config, logger Cont
 	var TDSVersion uint32
 	if p.Encryption == msdsn.EncryptionStrict {
 		TDSVersion = verTDS80
+	} else if p.LegacyTDS71 {
+		TDSVersion = verTDS71rev1
 	} else {
 		TDSVersion = verTDS74
 	}
@@ -1165,6 +1169,9 @@ func getTLSConn(conn *timeoutConn, p msdsn.Config, alpnSeq string) (tlsConn *tls
 }
 
 func connect(ctx context.Context, c *Connector, logger ContextLogger, p msdsn.Config) (res *tdsSession, err error) {
+	if p.LegacyTDS71 && p.Encryption != msdsn.EncryptionDisabled {
+		return nil, errors.New("legacy TDS 7.1 requires encryption disabled")
+	}
 	var cbt *integratedauth.ChannelBindings
 	isTransportEncrypted := false
 	// if instance is specified use instance resolution service

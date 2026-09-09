@@ -481,6 +481,20 @@ func parseDoneInProc(r *tdsBuffer) (res doneInProcStruct) {
 	return res
 }
 
+func parseDone71(r *tdsBuffer) (res doneStruct) {
+	res.Status = r.uint16()
+	res.CurCmd = r.uint16()
+	res.RowCount = uint64(r.uint32())
+	return res
+}
+
+func parseDoneInProc71(r *tdsBuffer) (res doneInProcStruct) {
+	res.Status = r.uint16()
+	res.CurCmd = r.uint16()
+	res.RowCount = uint64(r.uint32())
+	return res
+}
+
 type sspiMsg []byte
 
 func parseSSPIMsg(r *tdsBuffer) sspiMsg {
@@ -681,6 +695,23 @@ func parseColMetadata72(r *tdsBuffer, s *tdsSession) (columns []columnStruct) {
 			column.cryptoMeta = nil
 		}
 
+		column.ColName = r.BVarChar()
+	}
+	return columns
+}
+
+func parseColMetadata71(r *tdsBuffer, s *tdsSession) (columns []columnStruct) {
+	count := r.uint16()
+	if count == 0xffff {
+		return nil
+	}
+	columns = make([]columnStruct, count)
+	for i := range columns {
+		column := &columns[i]
+		baseTi := typeInfo{UserType: uint32(r.uint16()), Flags: r.uint16(), TypeId: r.byte()}
+		ti := readTypeInfo(r, baseTi.TypeId, nil, s.encoding)
+		ti.UserType, ti.Flags, ti.TypeId = baseTi.UserType, baseTi.Flags, baseTi.TypeId
+		column.Flags, column.UserType, column.ti = baseTi.Flags, baseTi.UserType, ti
 		column.ColName = r.BVarChar()
 	}
 	return columns
@@ -964,6 +995,19 @@ func parseInfo(r *tdsBuffer) (res Error) {
 	return
 }
 
+func parseError71(r *tdsBuffer) (res Error) {
+	length := r.uint16()
+	_ = length
+	res.Number = r.int32()
+	res.State = r.byte()
+	res.Class = r.byte()
+	res.Message = r.UsVarChar()
+	res.ServerName = r.BVarChar()
+	res.ProcName = r.BVarChar()
+	res.LineNo = int32(r.uint16())
+	return
+}
+
 // https://msdn.microsoft.com/en-us/library/dd303881.aspx
 func parseReturnValue(r *tdsBuffer, s *tdsSession) (nv namedValue) {
 	/*
@@ -1059,7 +1103,12 @@ func processSingleResponse(ctx context.Context, sess *tdsSession, ch chan tokenS
 			order := parseOrder(sess.buf)
 			ch <- order
 		case tokenDoneInProc:
-			done := parseDoneInProc(sess.buf)
+			var done doneInProcStruct
+			if sess.legacyTDS71 {
+				done = parseDoneInProc71(sess.buf)
+			} else {
+				done = parseDoneInProc(sess.buf)
+			}
 
 			if done.Status&doneCount != 0 {
 				sess.LogF(ctx, msdsn.LogRows, "(%d rows affected)", done.RowCount)
@@ -1089,7 +1138,12 @@ func processSingleResponse(ctx context.Context, sess *tdsSession, ch chan tokenS
 				return
 			}
 		case tokenDone, tokenDoneProc:
-			done := parseDone(sess.buf)
+			var done doneStruct
+			if sess.legacyTDS71 {
+				done = parseDone71(sess.buf)
+			} else {
+				done = parseDone(sess.buf)
+			}
 			done.errors = errs
 			if outs.msgq != nil {
 				errs = make([]Error, 0, 5)
@@ -1129,7 +1183,11 @@ func processSingleResponse(ctx context.Context, sess *tdsSession, ch chan tokenS
 				return
 			}
 		case tokenColMetadata:
-			columns = parseColMetadata72(sess.buf, sess)
+			if sess.legacyTDS71 {
+				columns = parseColMetadata71(sess.buf, sess)
+			} else {
+				columns = parseColMetadata72(sess.buf, sess)
+			}
 			ch <- columns
 			colsReceived = true
 			if outs.msgq != nil {
@@ -1155,7 +1213,12 @@ func processSingleResponse(ctx context.Context, sess *tdsSession, ch chan tokenS
 		case tokenEnvChange:
 			processEnvChg(ctx, sess)
 		case tokenError:
-			err := parseError72(sess.buf)
+			var err Error
+			if sess.legacyTDS71 {
+				err = parseError71(sess.buf)
+			} else {
+				err = parseError72(sess.buf)
+			}
 			sess.LogF(ctx, msdsn.LogDebug, "got ERROR %d %s", err.Number, err.Message)
 			errs = append(errs, err)
 			sess.LogS(ctx, msdsn.LogErrors, err.Message)
@@ -1163,7 +1226,12 @@ func processSingleResponse(ctx context.Context, sess *tdsSession, ch chan tokenS
 				_ = sqlexp.ReturnMessageEnqueue(ctx, outs.msgq, sqlexp.MsgError{Error: err})
 			}
 		case tokenInfo:
-			info := parseInfo(sess.buf)
+			var info Error
+			if sess.legacyTDS71 {
+				info = parseError71(sess.buf)
+			} else {
+				info = parseInfo(sess.buf)
+			}
 			sess.LogF(ctx, msdsn.LogDebug, "got INFO %d %s", info.Number, info.Message)
 			sess.LogS(ctx, msdsn.LogMessages, info.Message)
 			if outs.msgq != nil {
